@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rate Limiter Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #fafaf9; --surface: #f4f3f0; --card: #ffffff;
+    --border: rgba(0,0,0,0.10); --border-strong: rgba(0,0,0,0.18);
+    --text: #1a1917; --muted: #6b6a66; --hint: #a8a7a3;
+    --green: #1D9E75; --red: #E24B4A; --amber: #BA7517; --blue: #378ADD;
+    --radius: 10px; --radius-sm: 6px;
+    --font: 'Inter', system-ui, -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --surface: #1e1d1c; --card: #252422;
+      --border: rgba(255,255,255,0.10); --border-strong: rgba(255,255,255,0.18);
+      --text: #f0ede8; --muted: #9a9892; --hint: #65645f;
+      --green: #5DCAA5; --red: #F09595; --amber: #EF9F27; --blue: #85B7EB;
+    }
+  }
+  html { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+  body { min-height: 100vh; padding: 2rem; }
+  .page { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 2px; }
+  .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 1.75rem; }
+  .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .algo-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab { font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border-strong); background: var(--card); color: var(--muted); cursor: pointer; transition: all 0.15s; font-family: var(--font); }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .metric { background: var(--surface); border-radius: var(--radius-sm); padding: 14px 16px; }
+  .metric .lbl { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .metric .val { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  .metric .val.g { color: var(--green); } .metric .val.r { color: var(--red); } .metric .val.a { color: var(--amber); }
+  .controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--surface); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 1.25rem; }
+  .cg { display: flex; align-items: center; gap: 8px; }
+  .cg label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .cg span { font-size: 13px; font-weight: 600; min-width: 28px; color: var(--text); }
+  input[type=range] { -webkit-appearance: none; width: 110px; height: 4px; border-radius: 2px; background: var(--border-strong); outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--blue); cursor: pointer; }
+  .sep { width: 1px; height: 24px; background: var(--border); }
+  .btn { font-family: var(--font); font-size: 13px; font-weight: 500; padding: 7px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--card); color: var(--text); cursor: pointer; transition: all 0.15s; }
+  .btn:hover { background: var(--surface); }
+  .btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn.ghost { color: var(--muted); border-color: var(--border); }
+  .chart-row { display: grid; grid-template-columns: 1fr 220px; gap: 12px; margin-bottom: 1.25rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; }
+  .card-title { font-size: 11px; font-weight: 600; color: var(--hint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px; }
+  .tl { position: relative; height: 56px; background: var(--surface); border-radius: var(--radius-sm); overflow: hidden; }
+  .tl-bar { position: absolute; top: 8px; bottom: 8px; width: 9px; border-radius: 2px; }
+  .tl-bar.ok { background: var(--green); } .tl-bar.no { background: var(--red); }
+  .tl-legend { display: flex; gap: 12px; margin-top: 10px; }
+  .tl-legend span { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .tl-legend .dot { width: 8px; height: 8px; border-radius: 1px; }
+  .bucket-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 4px; }
+  .bucket-outer { width: 80px; height: 120px; border: 2px solid var(--border-strong); border-top: none; border-radius: 0 0 10px 10px; overflow: hidden; position: relative; background: var(--surface); }
+  .bucket-fill { position: absolute; bottom: 0; left: 0; right: 0; transition: height 0.35s ease, background 0.35s ease; }
+  .bucket-pct { position: absolute; bottom: 6px; width: 100%; text-align: center; font-size: 12px; font-weight: 600; color: #fff; z-index: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+  .bucket-lbl { font-size: 11px; color: var(--muted); text-align: center; }
+  .log-wrap { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+  .log-list { max-height: 108px; overflow-y: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.6; }
+  .log-entry { display: flex; gap: 10px; padding: 2px 0; border-bottom: 1px solid var(--border); }
+  .log-entry .ts { color: var(--hint); } .log-entry .ok { color: var(--green); font-weight: 600; } .log-entry .no { color: var(--red); font-weight: 600; } .log-entry .info { color: var(--muted); }
+  .cmp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1.25rem; }
+  .cmp-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
+  .cmp-card.active { border-color: var(--blue); }
+  .cmp-name { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .cmp-stat { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .cmp-bar-bg { height: 3px; background: var(--surface); border-radius: 2px; }
+  .cmp-bar { height: 3px; border-radius: 2px; background: var(--blue); transition: width 0.3s; }
+  .hist-section { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; }
+  .hist-legend { display: flex; gap: 14px; margin-bottom: 12px; }
+  .hist-legend span { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .hist-legend .sq { width: 9px; height: 9px; border-radius: 2px; }
+  @media (max-width: 600px) {
+    body { padding: 1rem; }
+    .metrics-row { grid-template-columns: repeat(2, 1fr); }
+    .chart-row { grid-template-columns: 1fr; }
+    .cmp-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top">
+    <div>
+      <h1>Rate limiter dashboard</h1>
+      <div class="subtitle">Interactive simulator — Token Bucket · Sliding Window Log · Sliding Window Counter · Leaky Bucket</div>
+    </div>
+    <div class="algo-tabs">
+      <button class="tab active" onclick="setAlgo('token')">Token bucket</button>
+      <button class="tab" onclick="setAlgo('swlog')">Sliding log</button>
+      <button class="tab" onclick="setAlgo('swcounter')">SW counter</button>
+      <button class="tab" onclick="setAlgo('leaky')">Leaky bucket</button>
+    </div>
+  </div>
+  <div class="metrics-row">
+    <div class="metric"><div class="lbl">Allowed</div><div class="val g" id="m-allowed">0</div></div>
+    <div class="metric"><div class="lbl">Blocked</div><div class="val r" id="m-blocked">0</div></div>
+    <div class="metric"><div class="lbl">Block rate</div><div class="val a" id="m-rate">0%</div></div>
+    <div class="metric"><div class="lbl">Remaining</div><div class="val" id="m-rem">—</div></div>
+  </div>
+  <div class="controls">
+    <div class="cg"><label>Capacity</label><input type="range" id="sl-cap" min="5" max="50" value="20" step="1" oninput="updateCfg()"><span id="lbl-cap">20</span></div>
+    <div class="sep"></div>
+    <div class="cg"><label>Refill rate</label><input type="range" id="sl-rate" min="1" max="20" value="5" step="1" oninput="updateCfg()"><span id="lbl-rate">5</span></div>
+    <div class="sep"></div>
+    <button class="btn" onclick="fireOne()">Fire request</button>
+    <button class="btn danger" onclick="fireBurst()">Burst x10</button>
+    <button class="btn ghost" onclick="resetAll()">Reset</button>
+  </div>
+  <div class="chart-row">
+    <div class="card">
+      <div class="card-title">Request timeline</div>
+      <div class="tl" id="tl"></div>
+      <div class="tl-legend">
+        <span><span class="dot" style="background:var(--green)"></span>Allowed</span>
+        <span><span class="dot" style="background:var(--red)"></span>Blocked</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Bucket state</div>
+      <div class="bucket-wrap">
+        <div class="bucket-outer">
+          <div class="bucket-fill" id="bf" style="height:100%;background:var(--blue)"></div>
+          <div class="bucket-pct" id="bpct">100%</div>
+        </div>
+        <div class="bucket-lbl" id="blbl">20 / 20</div>
+      </div>
+    </div>
+  </div>
+  <div class="log-wrap">
+    <div class="card-title">Request log</div>
+    <div class="log-list" id="log"></div>
+  </div>
+  <div style="font-size:11px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Algorithm comparison (cumulative)</div>
+  <div class="cmp-grid" id="cmp"></div>
+  <div class="hist-section">
+    <div class="card-title">Request history</div>
+    <div class="hist-legend">
+      <span><span class="sq" style="background:var(--green)"></span>Allowed</span>
+      <span><span class="sq" style="background:var(--red)"></span>Blocked</span>
+    </div>
+    <div style="position:relative;height:160px;">
+      <canvas id="hc" role="img" aria-label="Stacked bar chart showing allowed vs blocked requests over time">Request history chart</canvas>
+    </div>
+  </div>
+</div>
+<script>
+let algo='token',capacity=20,refillRate=5,tokens=20,lastRefill=Date.now();
+let swlogWindow=[],swcPrev=0,swcCurr=0,swcWinStart=Date.now();
+let leakyLevel=0,leakyLastLeak=Date.now(),totalAllowed=0,totalBlocked=0;
+let algoStats={token:{a:0,b:0},swlog:{a:0,b:0},swcounter:{a:0,b:0},leaky:{a:0,b:0}};
+let tlBars=[],histData=Array(20).fill(null).map(()=>({a:0,b:0})),histIdx=0,hChart;
+const WIN=8000;
+function setAlgo(a){algo=a;document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['token','swlog','swcounter','leaky'][i]===a));resetState();}
+function updateCfg(){capacity=+document.getElementById('sl-cap').value;refillRate=+document.getElementById('sl-rate').value;document.getElementById('lbl-cap').textContent=capacity;document.getElementById('lbl-rate').textContent=refillRate;resetState();}
+function resetState(){tokens=capacity;lastRefill=Date.now();swlogWindow=[];leakyLevel=0;leakyLastLeak=Date.now();swcPrev=0;swcCurr=0;swcWinStart=Date.now();updateBucket(1);}
+function decideToken(){const now=Date.now();tokens=Math.min(capacity,tokens+(now-lastRefill)/1000*refillRate);lastRefill=now;if(tokens>=1){tokens-=1;return{ok:true,rem:Math.floor(tokens)};}return{ok:false,rem:0};}
+function decideSwLog(){const now=Date.now();swlogWindow=swlogWindow.filter(t=>t>now-WIN);if(swlogWindow.length<capacity){swlogWindow.push(now);return{ok:true,rem:capacity-swlogWindow.length};}return{ok:false,rem:0};}
+function decideSwCounter(){const now=Date.now(),cw=Math.floor(now/WIN);if(Math.floor(swcWinStart/WIN)!==cw){swcPrev=swcCurr;swcCurr=0;swcWinStart=now;}const frac=(now%WIN)/WIN,est=Math.ceil(swcPrev*(1-frac)+swcCurr);if(est<capacity){swcCurr++;return{ok:true,rem:Math.max(0,capacity-est-1)};}return{ok:false,rem:0};}
+function decideLeaky(){const now=Date.now();leakyLevel=Math.max(0,leakyLevel-(now-leakyLastLeak)/1000*refillRate);leakyLastLeak=now;if(leakyLevel<capacity){leakyLevel++;return{ok:true,rem:Math.floor(capacity-leakyLevel)};}return{ok:false,rem:0};}
+function decide(){if(algo==='token')return decideToken();if(algo==='swlog')return decideSwLog();if(algo==='swcounter')return decideSwCounter();return decideLeaky();}
+function bucketFrac(){if(algo==='token')return tokens/capacity;if(algo==='swlog')return Math.max(0,1-swlogWindow.length/capacity);if(algo==='swcounter'){const f=(Date.now()%WIN)/WIN;return Math.max(0,1-(swcPrev*(1-f)+swcCurr)/capacity);}return Math.max(0,1-leakyLevel/capacity);}
+function updateBucket(frac){const h=Math.round(frac*100);document.getElementById('bf').style.height=h+'%';document.getElementById('bf').style.background=h>60?'var(--blue)':h>30?'var(--amber)':'var(--red)';document.getElementById('bpct').textContent=h+'%';const curr=Math.round(frac*capacity);document.getElementById('blbl').textContent=algo==='leaky'?`level ${Math.round(leakyLevel)}/${capacity}`:algo==='swlog'?`${swlogWindow.length}/${capacity} logged`:`${curr}/${capacity} tokens`;}
+function fireOne(){const r=decide();updateBucket(bucketFrac());if(r.ok){totalAllowed++;algoStats[algo].a++;}else{totalBlocked++;algoStats[algo].b++;}document.getElementById('m-allowed').textContent=totalAllowed;document.getElementById('m-blocked').textContent=totalBlocked;const rate=totalAllowed+totalBlocked>0?Math.round(totalBlocked/(totalAllowed+totalBlocked)*100):0;document.getElementById('m-rate').textContent=rate+'%';document.getElementById('m-rem').textContent=r.rem;addLog(r);addTl(r.ok);updateCmp();histData[histIdx].a+=r.ok?1:0;histData[histIdx].b+=r.ok?0:1;if(hChart){hChart.data.datasets[0].data=histData.map(d=>d.a);hChart.data.datasets[1].data=histData.map(d=>d.b);hChart.update('none');}}
+async function fireBurst(){histIdx=(histIdx+1)%20;histData[histIdx]={a:0,b:0};for(let i=0;i<10;i++){fireOne();await new Promise(r=>setTimeout(r,60));}}
+function resetAll(){totalAllowed=0;totalBlocked=0;algoStats={token:{a:0,b:0},swlog:{a:0,b:0},swcounter:{a:0,b:0},leaky:{a:0,b:0}};tlBars=[];document.getElementById('tl').innerHTML='';document.getElementById('log').innerHTML='';histData=Array(20).fill(null).map(()=>({a:0,b:0}));histIdx=0;['m-allowed','m-blocked'].forEach(id=>document.getElementById(id).textContent='0');document.getElementById('m-rate').textContent='0%';document.getElementById('m-rem').textContent='—';resetState();updateCmp();if(hChart){hChart.data.datasets[0].data=Array(20).fill(0);hChart.data.datasets[1].data=Array(20).fill(0);hChart.update('none');}}
+function addLog(r){const el=document.getElementById('log'),ts=new Date().toISOString().slice(11,19),d=document.createElement('div');d.className='log-entry';d.innerHTML=`<span class="ts">${ts}</span><span class="${r.ok?'ok':'no'}">${r.ok?'ALLOW':'BLOCK'}</span><span class="info">rem=${r.rem} ${algo}</span>`;el.insertBefore(d,el.firstChild);if(el.children.length>30)el.lastChild.remove();}
+function addTl(ok){const tl=document.getElementById('tl'),bar=document.createElement('div');bar.className='tl-bar '+(ok?'ok':'no');bar.style.right='4px';tl.appendChild(bar);tlBars.push(bar);tlBars.forEach((b,i)=>{b.style.right=((tlBars.length-1-i)*12+4)+'px';});if(tlBars.length>50){tlBars[0].remove();tlBars.shift();}}
+function updateCmp(){document.getElementById('cmp').innerHTML=[{id:'token',n:'Token bucket'},{id:'swlog',n:'Sliding log'},{id:'swcounter',n:'SW counter'},{id:'leaky',n:'Leaky bucket'}].map(a=>{const s=algoStats[a.id],tot=s.a+s.b,fp=tot>0?Math.round(s.a/tot*100):0;return`<div class="cmp-card ${a.id===algo?'active':''}"><div class="cmp-name">${a.n}</div><div class="cmp-stat">${s.a} ok / ${s.b} blocked</div><div class="cmp-bar-bg"><div class="cmp-bar" style="width:${fp}%"></div></div></div>`;}).join('');}
+function initChart(){hChart=new Chart(document.getElementById('hc'),{type:'bar',data:{labels:Array(20).fill(''),datasets:[{label:'Allowed',data:Array(20).fill(0),backgroundColor:'#1D9E75',stack:'s'},{label:'Blocked',data:Array(20).fill(0),backgroundColor:'#E24B4A',stack:'s'}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:'#888'}},y:{stacked:true,grid:{color:'rgba(128,128,128,0.1)'},ticks:{color:'#888',stepSize:1},beginAtZero:true}}}});}
+updateBucket(1);updateCmp();setInterval(()=>updateBucket(bucketFrac()),500);window.addEventListener('load',initChart);
+</script>
+</body>
+</html>
