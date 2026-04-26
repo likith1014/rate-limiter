@@ -1,0 +1,24 @@
+{
+  "name": "@elite/rate-limiter",
+  "version": "1.0.0",
+  "description": "Production-grade, multi-algorithm rate limiter with Redis backend — inspired by Google/Netflix infrastructure",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "demo": "node examples/demo.js",
+    "benchmark": "node examples/benchmark.js"
+  },
+  "keywords": [
+    "rate-limiter",
+    "api-gateway",
+    "token-bucket",
+    "sliding-window",
+    "leaky-bucket",
+    "redis",
+    "distributed"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}
