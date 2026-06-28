@@ -1,6 +1,6 @@
 # 🚦 Production Rate Limiter
 
-> A Google/Netflix-grade API rate limiting library — multiple algorithms, Redis-backed distributed storage, Prometheus monitoring, and Express middleware. Production-ready.
+> A Production grade API rate limiting library — multiple algorithms, Redis-backed distributed storage, Prometheus monitoring, and Express middleware. Production-ready.
 
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](./tests/run-all.js)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
